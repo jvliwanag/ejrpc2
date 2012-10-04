@@ -7,7 +7,7 @@
 -include("include/ejrpc2.hrl").
 -include("include/ejrpc2_err.hrl").
 
--export([decode_request/1, encode_response/1]).
+-export([decode_request/1, encode_response/1, handle_req/2]).
 
 -spec decode_request(binary()) -> rpc_req() | {error, rpc_parse_err()}.
 decode_request(Bin) ->
@@ -50,6 +50,22 @@ encode_response({error, Id, invalid_params}) ->
 	encode_response({error, Id, ?ERR_INVALID_PARAMS_CODE, ?ERR_INVALID_PARAMS_MSG});
 encode_response({error, Id, internal_error}) ->
 	encode_response({error, Id, ?ERR_INTERNAL_ERROR_CODE, ?ERR_INTERNAL_ERROR_MSG}).
+
+-spec handle_req(Mod::atom(), binary()) -> {ok, iolist()} | ok.
+handle_req(Mod, Bin) ->
+	%% Load so that atoms are recognizable
+	Mod:module_info(exports),
+
+	case decode_request(Bin) of
+		{rpc, Id, Method, Args} ->
+			Res = erlang:apply(Mod, Method, Args),
+			encode_response({ok, Id, Res});
+		{notif, Method, Args} ->
+			erlang:apply(Mod, Method, Args),
+			ok;
+		{error, _, _} = Err ->
+			encode_response(Err)
+	end.
 
 %% Internal
 
@@ -209,5 +225,24 @@ encode_known_err_test_() ->
 	test_known_err(method_not_found, ?ERR_METHOD_NOT_FOUND_CODE, ?ERR_METHOD_NOT_FOUND_MSG),
 	test_known_err(invalid_params, ?ERR_INVALID_PARAMS_CODE, ?ERR_INVALID_PARAMS_MSG),
 	test_known_err(internal_error, ?ERR_INTERNAL_ERROR_CODE, ?ERR_INTERNAL_ERROR_MSG)].
+
+%% Mod handling
+
+handle_rpc_test() ->
+	?assertEqual(
+		encode_response({ok, 1, 3}),
+		handle_req(testmod, ?REQ("subtract", "[5,2]", "1"))).
+
+handle_notif_test() ->
+	?assertEqual(
+		ok,
+		handle_req(testmod, ?NOTIF("greet_me", "[\"helloworld\"]"))),
+	Rcvd = receive A={greet, _} -> A after 0 -> none end,
+	?assertEqual({greet, <<"helloworld">>}, Rcvd).
+
+handle_decode_err_test() ->
+	?assertEqual(
+		encode_response({error, null, parse_error}),
+		handle_req(testmod, <<"wrong">>)).
 
 -endif.
