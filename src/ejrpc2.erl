@@ -83,6 +83,8 @@ parse_decoded({struct, Props}) ->
 				_ ->
 					{rpc, EfId, Method, Params}
 			end;
+		{{error, method_not_found}, {ok, _}} ->
+			{error, EfId, method_not_found};
 		_ ->
 			{error, EfId, invalid_request}
 	end;
@@ -92,10 +94,15 @@ parse_decoded(_) ->
 	{error, null, invalid_request}.
 
 get_method(Props) ->
-	try
-		{ok, binary_to_existing_atom(proplists:get_value(<<"method">>, Props), utf8)}
-	catch
-		_:_ -> {error, invalid_method}
+	case proplists:get_value(<<"method">>, Props) of
+		MethodBin when is_binary(MethodBin) ->
+			try
+				{ok, binary_to_existing_atom(MethodBin, utf8)}
+			catch
+				_:_ -> {error, method_not_found}
+			end;
+		_ ->
+			{error, invalid_method}
 	end.
 
 get_params(Props) ->
@@ -146,6 +153,11 @@ invalid_json_test() ->
 invalid_method_test() ->
 	?assertEqual({error, null, invalid_request},
 		decode_request(<<"{\"jsonrpc\": \"2.0\", \"method\": 1, \"params\":[42,23]}">>)).
+
+unknown_method_atom_test() ->
+	Method = list_to_binary(erlang:ref_to_list(make_ref())),
+	?assertEqual({error, null, method_not_found},
+		decode_request(<<"{\"jsonrpc\":\"2.0\",\"method\":\"", Method/bytes,"\",\"params\":[42,23]}">>)).
 
 invalid_params_test() ->
 	?assertEqual({error, 2, invalid_request},
