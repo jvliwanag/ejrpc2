@@ -53,16 +53,26 @@ encode_response({error, Id, internal_error}) ->
 
 -spec handle_req(Mod::atom(), binary()) -> {ok, iolist()} | ok.
 handle_req(Mod, Bin) ->
-	%% Load so that atoms are recognizable
-	Mod:module_info(exports),
+	%% Load first so that atoms are recognizable
+	Exports = Mod:module_info(exports),
+
+	OnApplySuccess = fun(Method, Args, Id, F) ->
+		case lists:member({Method, length(Args)}, Exports) of
+			true ->
+				Res = erlang:apply(Mod, Method, Args),
+				F(Res);
+			false ->
+				encode_response({error, Id, method_not_found})
+		end
+	end,
 
 	case decode_request(Bin) of
 		{rpc, Id, Method, Args} ->
-			Res = erlang:apply(Mod, Method, Args),
-			encode_response({ok, Id, Res});
+			OnApplySuccess(Method, Args, Id,
+				fun(Res) -> encode_response({ok, Id, Res}) end);
 		{notif, Method, Args} ->
-			erlang:apply(Mod, Method, Args),
-			ok;
+			OnApplySuccess(Method, Args, null,
+				fun(_) -> ok end);
 		{error, _, _} = Err ->
 			encode_response(Err)
 	end.
@@ -256,5 +266,11 @@ handle_decode_err_test() ->
 	?assertEqual(
 		encode_response({error, null, parse_error}),
 		handle_req(testmod, <<"wrong">>)).
+
+handle_undefined_method_test() ->
+	non_existing_method, % Make sure atom is loaded
+	?assertEqual(
+		encode_response({error, 1, method_not_found}),
+		handle_req(testmod, ?REQ("non_existing_method", "[]", "1"))).
 
 -endif.
