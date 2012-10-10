@@ -51,15 +51,14 @@ encode_response({error, Id, invalid_params}) ->
 encode_response({error, Id, internal_error}) ->
 	encode_response({error, Id, ?ERR_INTERNAL_ERROR_CODE, ?ERR_INTERNAL_ERROR_MSG}).
 
--spec handle_req(Mod::atom(), binary()) -> {ok, iolist()} | ok.
+-spec handle_req(atom() | [atom()], binary()) -> {ok, iolist()} | ok.
 handle_req(Mod, Bin) ->
 	%% Load first so that atoms are recognizable
-	Exports = Mod:module_info(exports),
-
+	Exports = get_exports(Mod, []),
 	OnApplySuccess = fun(Method, Args, Id, F) ->
-		case lists:member({Method, length(Args)}, Exports) of
-			true ->
-				Res = erlang:apply(Mod, Method, Args),
+		case lists:keyfind({Method, length(Args)}, 2, Exports) of
+			{M, _} ->
+				Res = erlang:apply(M, Method, Args),
 				F(Res);
 			false ->
 				encode_response({error, Id, method_not_found})
@@ -121,6 +120,16 @@ get_params(Props) ->
 		L when is_list(L) -> {ok, L};
 		_ -> {error, invalid_params}
 	end.
+
+
+get_exports(M, []) when is_atom(M) ->
+	[{M, X} || X <- M:module_info(exports)];
+
+get_exports([], Acc) ->
+	lists:flatten(Acc);
+get_exports([M|R], Acc) ->
+	get_exports(R, [get_exports(M, [])|Acc]).
+
 
 -ifdef(TEST).
 
@@ -272,5 +281,12 @@ handle_undefined_method_test() ->
 	?assertEqual(
 		encode_response({error, 1, method_not_found}),
 		handle_req(testmod, ?REQ("non_existing_method", "[]", "1"))).
+
+%% Multiple Mod test
+handle_multimod_test() ->
+	?assertEqual(
+		encode_response({ok, 1, 7}),
+		handle_req([testmod, testmod2], ?REQ("add", "[5,2]", "1"))).
+
 
 -endif.
