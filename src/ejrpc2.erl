@@ -75,8 +75,11 @@ handle_req(Mod, Bin, Opts) ->
 				[] -> Args0;
 				L when is_list(L) -> L ++ Args0
 			end,
-			OnApplySuccess(Method, Args, Id,
-				fun(Res) -> encode_response({ok, Id, Res}) end);
+			OnApplySuccess(Method, Args, Id, fun
+				({ok, Res}) -> encode_response({ok, Id, Res});
+				({error, Code, Msg}) -> encode_response({error, Id, Code, Msg});
+				(Res) -> encode_response({ok, Id, Res})
+			end);
 		{notif, Method, Args} ->
 			OnApplySuccess(Method, Args, null,
 				fun(_) -> ok end);
@@ -289,6 +292,18 @@ handle_undefined_method_test() ->
 	?assertEqual(
 		encode_response({error, 1, method_not_found}),
 		handle_req(testmod, ?REQ("non_existing_method", "[]", "1"))).
+
+%% Response Variations
+handle_ok_resp_test() ->
+	?assertEqual(
+		encode_response({ok, 1, 3}),
+		handle_req(testmod, ?REQ("safe_divide", "[6,2]", "1"))).
+
+handle_error_resp_test() ->
+	?assertEqual(
+		encode_response({error, 1, 400, <<"divide by zero">>}),
+		handle_req(testmod, ?REQ("safe_divide", "[6,0]", "1"))).
+
 
 %% Multiple Mod test
 handle_multimod_test() ->
