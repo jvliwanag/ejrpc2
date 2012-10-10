@@ -53,6 +53,10 @@ encode_response({error, Id, internal_error}) ->
 
 -spec handle_req(atom() | [atom()], binary()) -> {ok, iolist()} | ok.
 handle_req(Mod, Bin) ->
+	handle_req(Mod, Bin, []).
+
+-spec handle_req(atom() | [atom()], binary(), rpc_req_opts()) -> {ok, iolist()} | ok.
+handle_req(Mod, Bin, Opts) ->
 	%% Load first so that atoms are recognizable
 	Exports = get_exports(Mod, []),
 	OnApplySuccess = fun(Method, Args, Id, F) ->
@@ -66,7 +70,11 @@ handle_req(Mod, Bin) ->
 	end,
 
 	case decode_request(Bin) of
-		{rpc, Id, Method, Args} ->
+		{rpc, Id, Method, Args0} ->
+			Args = case proplists:get_value(preargs, Opts, []) of
+				[] -> Args0;
+				L when is_list(L) -> L ++ Args0
+			end,
 			OnApplySuccess(Method, Args, Id,
 				fun(Res) -> encode_response({ok, Id, Res}) end);
 		{notif, Method, Args} ->
@@ -288,5 +296,10 @@ handle_multimod_test() ->
 		encode_response({ok, 1, 7}),
 		handle_req([testmod, testmod2], ?REQ("add", "[5,2]", "1"))).
 
+%% Options
+handle_preargs_test() ->
+	?assertEqual(
+		encode_response({ok, 1, 3}),
+		handle_req(testmod, ?REQ("subtract", "[2]", "1"), [{preargs, [5]}])).
 
 -endif.

@@ -14,3 +14,6 @@
 -type rpc_resp() :: {ok, rpc_id(), rpc_result()} |
 	{error, rpc_id(), rpc_errcode(), rpc_errmsg(), rpc_errdata()} |
 	{error, rpc_id(), rpc_errcode(), rpc_errmsg()}.
+
+-type rpc_req_opts() :: [rpc_req_opts()].
+-type rpc_req_opt() :: {preargs, [any()]}.
