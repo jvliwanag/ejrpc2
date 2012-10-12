@@ -1,7 +1,7 @@
 {application, ejrpc2,
  [
-  {description, ""},
-  {vsn, "1"},
+  {description, "Erlang JSON-RPC2 Utility"},
+  {vsn, "0.0.1"},
   {registered, []},
   {applications, [
                   kernel,
