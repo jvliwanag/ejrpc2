@@ -11,7 +11,7 @@
 
 -spec decode_request(binary()) -> rpc_req() | {error, rpc_parse_err()}.
 decode_request(Bin) ->
-	try mochijson2:decode(Bin) of
+	try json_to_term(Bin) of
 		Req ->
 			parse_decoded(Req)
 	catch _:_ ->
@@ -21,19 +21,19 @@ decode_request(Bin) ->
 
 -spec encode_response(rpc_resp()) -> {ok, iolist()}.
 encode_response({ok, Id, Result}) ->
-	{ok, mochijson2:encode({struct, [
+	{ok, term_to_json({[
 		{jsonrpc, <<"2.0">>},
 		{result, Result},
 		{id, Id}]})};
 encode_response({error, Id, Code, Message}) ->
-	{ok, mochijson2:encode({struct, [
+	{ok, term_to_json({[
 		{jsonrpc, <<"2.0">>},
 		{error, {struct, [
 			{code, Code},
 			{message, Message}]}},
 		{id, Id}]})};
 encode_response({error, Id, Code, Message, Data}) ->
-	{ok, mochijson2:encode({struct, [
+	{ok, term_to_json({[
 		{jsonrpc, <<"2.0">>},
 		{error, {struct, [
 			{code, Code},
@@ -89,7 +89,13 @@ handle_req(Mod, Bin, Opts) ->
 
 %% Internal
 
-parse_decoded({struct, Props}) ->
+json_to_term(Bin) ->
+	mochijson2:decode(Bin, [{format, eep18}]).
+
+term_to_json(T) ->
+	mochijson2:encode(T).
+
+parse_decoded({Props}) ->
 	M = get_method(Props),
 	P = get_params(Props),
 	Id = proplists:get_value(<<"id">>, Props),
@@ -127,7 +133,7 @@ get_method(Props) ->
 
 get_params(Props) ->
 	case proplists:get_value(<<"params">>, Props, []) of
-		{struct, P} -> {ok, {params, P}};
+		{P} -> {ok, {params, P}};
 		L when is_list(L) -> {ok, L};
 		_ -> {error, invalid_params}
 	end.
@@ -225,7 +231,7 @@ rpc_call_batch_test() ->
 
 encode_result_test() ->
 	{ok, IOList} = encode_response({ok, 1, <<"theresult">>}),
-	{struct, Props} = mochijson2:decode(IOList),
+	{Props} = json_to_term(IOList),
 	?assertEqual(<<"2.0">>, proplists:get_value(<<"jsonrpc">>, Props)),
 	?assertEqual(<<"theresult">>, proplists:get_value(<<"result">>, Props)),
 	?assertEqual(1, proplists:get_value(<<"id">>, Props)),
@@ -233,12 +239,12 @@ encode_result_test() ->
 
 encode_error_test() ->
 	{ok, IOList} = encode_response({error, 1, 234, <<"errmsg">>, <<"errdata">>}),
-	{struct, Props} = mochijson2:decode(IOList),
+	{Props} = json_to_term(IOList),
 	?assertEqual(<<"2.0">>, proplists:get_value(<<"jsonrpc">>, Props)),
 	?assertEqual(1, proplists:get_value(<<"id">>, Props)),
 	?assertEqual(3, length(Props)),
 
-	{struct, EProps} = proplists:get_value(<<"error">>, Props),
+	{EProps} = proplists:get_value(<<"error">>, Props),
 	?assertEqual(234, proplists:get_value(<<"code">>, EProps)),
 	?assertEqual(<<"errmsg">>, proplists:get_value(<<"message">>, EProps)),
 	?assertEqual(<<"errdata">>, proplists:get_value(<<"data">>, EProps)),
@@ -246,16 +252,16 @@ encode_error_test() ->
 
 encode_error_nodata_test() ->
 	{ok, IOList} = encode_response({error, 1, 234, <<"errmsg">>}),
-	{struct, Props} = mochijson2:decode(IOList),
-	{struct, EProps} = proplists:get_value(<<"error">>, Props),
+	{Props} = json_to_term(IOList),
+	{EProps} = proplists:get_value(<<"error">>, Props),
 	?assertEqual(undefined, proplists:get_value(<<"data">>, Props)),
 	?assertEqual(2, length(EProps)).
 
 test_known_err(Name, Code, Msg) ->
 	fun() ->
 		{ok, IOList} = encode_response({error, null, Name}),
-		{struct, Props} = mochijson2:decode(IOList),
-		{struct, EProps} = proplists:get_value(<<"error">>, Props),
+		{Props} = json_to_term(IOList),
+		{EProps} = proplists:get_value(<<"error">>, Props),
 
 		?assertEqual(Code, proplists:get_value(<<"code">>, EProps)),
 		?assertEqual(Msg, proplists:get_value(<<"message">>, EProps))
