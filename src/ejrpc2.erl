@@ -7,7 +7,7 @@
 -include("include/ejrpc2.hrl").
 -include("include/ejrpc2_err.hrl").
 
--export([decode_request/1, encode_response/1, handle_req/2]).
+-export([decode_request/1, encode_response/1, handle_req/2, handle_req/3]).
 
 -spec decode_request(binary()) -> rpc_req() | {error, rpc_parse_err()}.
 decode_request(Bin) ->
