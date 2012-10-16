@@ -62,7 +62,8 @@ handle_req(Mod, Bin, Opts) ->
 	OnApplySuccess = fun(Method, Args, Id, F) ->
 		case lists:keyfind({Method, length(Args)}, 2, Exports) of
 			{M, _} ->
-				Res = erlang:apply(M, Method, Args),
+				Fun = binary_to_existing_atom(Method, utf8),
+				Res = erlang:apply(M, Fun, Args),
 				F(Res);
 			false ->
 				encode_response({error, Id, method_not_found})
@@ -122,11 +123,7 @@ parse_decoded(_) ->
 get_method(Props) ->
 	case proplists:get_value(<<"method">>, Props) of
 		MethodBin when is_binary(MethodBin) ->
-			try
-				{ok, binary_to_existing_atom(MethodBin, utf8)}
-			catch
-				_:_ -> {error, method_not_found}
-			end;
+			{ok, MethodBin};
 		_ ->
 			{error, invalid_method}
 	end.
@@ -140,7 +137,7 @@ get_params(Props) ->
 
 
 get_exports(M, []) when is_atom(M) ->
-	[{M, X} || X <- M:module_info(exports)];
+	[{M, {erlang:atom_to_binary(F, utf8), A}} || {F, A} <- M:module_info(exports)];
 
 get_exports([], Acc) ->
 	lists:flatten(Acc);
@@ -157,29 +154,29 @@ get_exports([M|R], Acc) ->
 
 positional_test_() ->
 	[?_assertEqual(
-			{rpc, 1, subtract, [42, 23]},
+			{rpc, 1, <<"subtract">>, [42, 23]},
 			decode_request(?REQ("subtract", "[42,23]", "1"))),
 		?_assertEqual(
-			{rpc, 2, subtract, [23, 42]},
+			{rpc, 2, <<"subtract">>, [23, 42]},
 			decode_request(?REQ("subtract", "[23,42]", "2")))].
 
 named_parameters_test() ->
 	?assertEqual(
-		{rpc, 3, subtract, {params, [{<<"subtrahend">>, 23}, {<<"minuend">>, 42}]}},
+		{rpc, 3, <<"subtract">>, {params, [{<<"subtrahend">>, 23}, {<<"minuend">>, 42}]}},
 		decode_request(?REQ("subtract", "{\"subtrahend\":23,\"minuend\":42}", "3"))).
 
 notification_test() ->
-	?assertEqual({notif, subtract, [23, 42]},
+	?assertEqual({notif, <<"subtract">>, [23, 42]},
 		decode_request(?NOTIF("subtract", "[23,42]"))).
 
 rpc_with_null_id_test() ->
 	?assertEqual(
-		{rpc, null, subtract, [42, 23]},
+		{rpc, null, <<"subtract">>, [42, 23]},
 		decode_request(?REQ("subtract", "[42,23]", "null"))).
 
 no_parameters_test() ->
 	?assertEqual(
-		{notif, greet, []},
+		{notif, <<"greet">>, []},
 		decode_request(<<"{\"jsonrpc\":\"2.0\",\"method\":\"greet\"}">>)).
 
 invalid_json_test() ->
@@ -189,11 +186,6 @@ invalid_json_test() ->
 invalid_method_test() ->
 	?assertEqual({error, null, invalid_request},
 		decode_request(<<"{\"jsonrpc\": \"2.0\", \"method\": 1, \"params\":[42,23]}">>)).
-
-unknown_method_atom_test() ->
-	Method = list_to_binary(erlang:ref_to_list(make_ref())),
-	?assertEqual({error, null, method_not_found},
-		decode_request(<<"{\"jsonrpc\":\"2.0\",\"method\":\"", Method/bytes,"\",\"params\":[42,23]}">>)).
 
 invalid_params_test() ->
 	?assertEqual({error, 2, invalid_request},
@@ -210,12 +202,12 @@ rpc_call_invalid_batch_test() ->
 
 rpc_call_batch_test() ->
 	?assertEqual({batch, [
-			{rpc, 1, sum, [1,2,4]},
-			{notif, notify_hello, [7]},
-			{rpc, 2, subtract, [42,23]},
+			{rpc, 1, <<"sum">>, [1,2,4]},
+			{notif, <<"notify_hello">>, [7]},
+			{rpc, 2, <<"subtract">>, [42,23]},
 			{error, null, invalid_request},
-			{rpc, 5, 'foo.get', {params, [{<<"name">>, <<"myself">>}]}},
-			{rpc, <<"9">>, get_data, []}
+			{rpc, 5, <<"foo.get">>, {params, [{<<"name">>, <<"myself">>}]}},
+			{rpc, <<"9">>, <<"get_data">>, []}
 		]},
 		decode_request(iolist_to_binary(["[",
 			?REQ("sum", "[1,2,4]", "1"), ",",

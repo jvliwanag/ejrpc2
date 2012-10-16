@@ -1,6 +1,6 @@
 -type rpc_id() :: null | binary() | integer().
 -type rpc_args() :: [any()] | {params, [{binary(), any()}]}.
--type rpc_method() :: atom().
+-type rpc_method() :: binary().
 -type rpc_req_rpc() :: {rpc, rpc_id(), rpc_method(), rpc_args()}.
 -type rpc_req_notif() :: {notif, rpc_method(), rpc_args()}.
 -type rpc_req() :: rpc_req_rpc() | rpc_req_notif().
