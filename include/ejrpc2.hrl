@@ -1,3 +1,9 @@
+-type rpc_mod() :: atom() | {atom, [rpc_mod_opt()]}.
+-type rpc_mod_opt() ::
+	{prefix, binary()} |
+	{prefix, string()} |
+	prefix.
+
 -type rpc_id() :: null | binary() | integer().
 -type rpc_args() :: [any()] | {params, [{binary(), any()}]}.
 -type rpc_method() :: binary().

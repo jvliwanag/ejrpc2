@@ -51,18 +51,18 @@ encode_response({error, Id, invalid_params}) ->
 encode_response({error, Id, internal_error}) ->
 	encode_response({error, Id, ?ERR_INTERNAL_ERROR_CODE, ?ERR_INTERNAL_ERROR_MSG}).
 
--spec handle_req(atom() | [atom()], binary()) -> {ok, iolist()} | ok.
+-spec handle_req(rpc_mod() | [rpc_mod()], binary()) -> {ok, iolist()} | ok.
 handle_req(Mod, Bin) ->
 	handle_req(Mod, Bin, []).
 
--spec handle_req(atom() | [atom()], binary(), rpc_req_opts()) -> {ok, iolist()} | ok.
+-spec handle_req(rpc_mod() | [rpc_mod()], binary(), rpc_req_opts()) -> {ok, iolist()} | ok.
 handle_req(Mod, Bin, Opts) ->
-	%% Load first so that atoms are recognizable
 	Exports = get_exports(Mod, []),
+
+	%% TODO better to decode first, then find
 	OnApplySuccess = fun(Method, Args, Id, F) ->
-		case lists:keyfind({Method, length(Args)}, 2, Exports) of
-			{M, _} ->
-				Fun = binary_to_existing_atom(Method, utf8),
+		case lists:keyfind({Method, length(Args)}, 3, Exports) of
+			{M, Fun, _} ->
 				Res = erlang:apply(M, Fun, Args),
 				F(Res);
 			false ->
@@ -138,13 +138,28 @@ get_params(Props) ->
 
 get_exports(M, []) when is_atom(M) ->
 	get_exports({M, []}, []);
-get_exports({M, _}, []) when is_atom(M) ->
-	[{M, {erlang:atom_to_binary(F, utf8), A}} || {F, A} <- M:module_info(exports)];
+get_exports({M, Opts}, []) when is_atom(M) ->
+	Pref = proplists:get_value(prefix, Opts),
+	[{M, F, {get_fun_name_f(M, F, Pref), A}} || {F, A} <- M:module_info(exports)];
 
 get_exports([], Acc) ->
 	lists:flatten(Acc);
 get_exports([H|R], Acc) ->
 	get_exports(R, [get_exports(H, [])|Acc]).
+
+get_fun_name_f(_, F, P) when is_binary(P) ->
+	Name = erlang:atom_to_binary(F, utf8),
+	<<P/binary, ".", Name/binary>>;
+get_fun_name_f(_, F, P) when is_list(P) ->
+	Name = erlang:atom_to_binary(F, utf8),
+	PBin = erlang:list_to_binary(P),
+	<<PBin/binary, ".", Name/binary>>;
+get_fun_name_f(M, F, true) ->
+	Name = erlang:atom_to_binary(F, utf8),
+	P = erlang:atom_to_binary(M, utf8),
+	<<P/binary, ".", Name/binary>>;
+get_fun_name_f(_, F, _) ->
+	erlang:atom_to_binary(F, utf8).
 
 
 -ifdef(TEST).
@@ -316,6 +331,18 @@ empty_mod_options_test() ->
 	?assertEqual(
 		encode_response({ok, 1, 3}),
 		handle_req({testmod, []}, ?REQ("subtract", "[5,2]", "1"))).
+
+prefix_mod_options_test_() ->
+	[{"binary prefix", ?_assertEqual(
+		encode_response({ok, 1, 3}),
+		handle_req({testmod, [{prefix, <<"mod">>}]}, ?REQ("mod.subtract", "[5,2]", "1")))},
+	{"list prefix", ?_assertEqual(
+		encode_response({ok, 1, 3}),
+		handle_req({testmod, [{prefix, "mod"}]}, ?REQ("mod.subtract", "[5,2]", "1")))},
+	{"module prefix", ?_assertEqual(
+		encode_response({ok, 1, 3}),
+		handle_req({testmod, [prefix]}, ?REQ("testmod.subtract", "[5,2]", "1")))}].
+
 
 %% handle Options
 handle_preargs_test() ->
