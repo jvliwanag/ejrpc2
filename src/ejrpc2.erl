@@ -137,12 +137,14 @@ get_params(Props) ->
 
 
 get_exports(M, []) when is_atom(M) ->
+	get_exports({M, []}, []);
+get_exports({M, _}, []) when is_atom(M) ->
 	[{M, {erlang:atom_to_binary(F, utf8), A}} || {F, A} <- M:module_info(exports)];
 
 get_exports([], Acc) ->
 	lists:flatten(Acc);
-get_exports([M|R], Acc) ->
-	get_exports(R, [get_exports(M, [])|Acc]).
+get_exports([H|R], Acc) ->
+	get_exports(R, [get_exports(H, [])|Acc]).
 
 
 -ifdef(TEST).
@@ -309,7 +311,13 @@ handle_multimod_test() ->
 		encode_response({ok, 1, 7}),
 		handle_req([testmod, testmod2], ?REQ("add", "[5,2]", "1"))).
 
-%% Options
+%% Mod Options test
+empty_mod_options_test() ->
+	?assertEqual(
+		encode_response({ok, 1, 3}),
+		handle_req({testmod, []}, ?REQ("subtract", "[5,2]", "1"))).
+
+%% handle Options
 handle_preargs_test() ->
 	?assertEqual(
 		encode_response({ok, 1, 3}),
