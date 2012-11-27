@@ -11,13 +11,7 @@
 
 -spec decode_request(binary()) -> rpc_req() | {error, rpc_parse_err()}.
 decode_request(Bin) ->
-	try json_to_term(Bin) of
-		Req ->
-			parse_decoded(Req)
-	catch _:_ ->
-			{error, null, parse_error}
-	end.
-
+	decode_request(Bin, undefined).
 
 -spec encode_response(rpc_resp()) -> {ok, iolist()}.
 encode_response({ok, Id, Result}) ->
@@ -58,6 +52,7 @@ handle_req(Mod, Bin) ->
 -spec handle_req(rpc_mod() | [rpc_mod()], binary(), rpc_req_opts()) -> {ok, iolist()} | ok.
 handle_req(Mod, Bin, Opts) ->
 	Exports = get_exports(Mod, []),
+	ArbHandler = proplists:get_value(arbitrary_json_h, Opts),
 
 	%% TODO better to decode first, then find
 	OnApplySuccess = fun(Method, Args, Id, F) ->
@@ -70,7 +65,7 @@ handle_req(Mod, Bin, Opts) ->
 		end
 	end,
 
-	case decode_request(Bin) of
+	case decode_request(Bin, ArbHandler) of
 		{rpc, Id, Method, Args0} ->
 			Args = case proplists:get_value(preargs, Opts, []) of
 				[] -> Args0;
@@ -85,10 +80,27 @@ handle_req(Mod, Bin, Opts) ->
 			OnApplySuccess(Method, Args, null,
 				fun(_) -> ok end);
 		{error, _, _} = Err ->
-			encode_response(Err)
+			encode_response(Err);
+		{arbitrary, Val} ->
+			Val
 	end.
 
 %% Internal
+
+decode_request(Bin, ArbHandler) ->
+	try json_to_term(Bin) of
+		Req ->
+			handle_arb_json(ArbHandler, Req,
+				parse_decoded(Req))
+	catch _:_ ->
+			{error, null, parse_error}
+	end.
+
+handle_arb_json(ArbHandler, Req, {error, _, _})
+		when is_function(ArbHandler, 1) ->
+	{arbitrary, ArbHandler(Req)};
+handle_arb_json(_, _, Res) ->
+	Res.
 
 json_to_term(Bin) ->
 	mochijson2:decode(Bin, [{format, eep18}]).
@@ -110,8 +122,6 @@ parse_decoded({Props}) ->
 				_ ->
 					{rpc, EfId, Method, Params}
 			end;
-		{{error, method_not_found}, {ok, _}} ->
-			{error, EfId, method_not_found};
 		_ ->
 			{error, EfId, invalid_request}
 	end;
@@ -349,5 +359,9 @@ handle_preargs_test() ->
 	?assertEqual(
 		encode_response({ok, 1, 3}),
 		handle_req(testmod, ?REQ("subtract", "[2]", "1"), [{preargs, [5]}])).
+
+handle_arbitrary_json_test() ->
+	?assertEqual(ok, handle_req(testmod, <<"{\"num\":5}">>,
+		[{arbitrary_json_h, fun(_) -> ok end}])).
 
 -endif.
