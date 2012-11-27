@@ -103,10 +103,10 @@ handle_arb_json(_, _, Res) ->
 	Res.
 
 json_to_term(Bin) ->
-	mochijson2:decode(Bin, [{format, eep18}]).
+	ejrpc2_json:decode(Bin, [{format, eep18}]).
 
 term_to_json(T) ->
-	mochijson2:encode(T).
+	ejrpc2_json:encode(T).
 
 parse_decoded({Props}) ->
 	M = get_method(Props),
