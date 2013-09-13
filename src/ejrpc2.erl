@@ -183,9 +183,6 @@ encode_response_with_eterm(R, E) ->
 	{ok, X} = encode_response(R),
 	{ok, X, E}.
 
-encode_response_no_eterm(R) ->
-	encode_response_with_eterm(R, undefined).
-
 -ifdef(TEST).
 
 -define(NOTIF(M, P), <<"{\"jsonrpc\":\"2.0\",\"method\":\"", M, "\",\"params\":", P, "}">>).
@@ -415,5 +412,10 @@ handle_default_eterm_test_() ->
 	{"error other", ?_assertEqual(
 		encode_response_with_eterm({error, null, parse_error}, some_term),
 		handle_req(testmod, <<"wrong">>, [{default_eterm, some_term}]))}].
+
+%% Internal
+
+encode_response_no_eterm(R) ->
+	encode_response_with_eterm(R, undefined).
 
 -endif.
