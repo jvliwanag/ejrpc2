@@ -90,7 +90,7 @@ handle_req(Mod, Bin, Opts) ->
 		{error, _, _} = Err ->
 			encode_response(Err);
 		{arbitrary, Val} ->
-			Val
+			{ok, undefined, Val}
 	end.
 
 %% Internal
@@ -387,7 +387,7 @@ handle_preargs_test() ->
 		handle_req(testmod, ?REQ("subtract", "[2]", "1"), [{preargs, [5]}])).
 
 handle_arbitrary_json_test() ->
-	?assertEqual(ok, handle_req(testmod, <<"{\"num\":5}">>,
-		[{arbitrary_json_h, fun(_) -> ok end}])).
+	?assertEqual({ok, undefined, 99}, handle_req(testmod, <<"{\"num\":5}">>,
+		[{arbitrary_json_h, fun(_) -> 99 end}])).
 
 -endif.
