@@ -9,7 +9,7 @@ subtract(X, Y) ->
 -spec greet_me(any()) -> ok.
 greet_me(Msg) ->
 	self() ! {greet, Msg},
-	ok.
+	hello.
 
 -spec safe_divide(integer(), integer()) ->
 		{ok, integer()} | {error, integer(), binary()}.

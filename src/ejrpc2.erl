@@ -86,7 +86,7 @@ handle_req(Mod, Bin, Opts) ->
 			end);
 		{notif, Method, Args} ->
 			OnApplySuccess(Method, Args, null,
-				fun(_) -> {ok, undefined, undefined} end);
+				fun(V) -> {ok, undefined, V} end);
 		{error, _, _} = Err ->
 			encode_response_no_eterm(Err);
 		{arbitrary, Val} ->
@@ -317,7 +317,7 @@ handle_rpc_test() ->
 
 handle_notif_test() ->
 	?assertEqual(
-		{ok, undefined, undefined},
+		{ok, undefined, hello},
 		handle_req(testmod, ?NOTIF("greet_me", "[\"helloworld\"]"))),
 	Rcvd = receive A={greet, _} -> A after 0 -> none end,
 	?assertEqual({greet, <<"helloworld">>}, Rcvd).
@@ -355,6 +355,11 @@ handle_error_with_eterm_test() ->
 	?assertEqual(
 		encode_response_with_eterm({error, 1, 400, <<"not enough">>}, 99),
 		handle_req(testmod, ?REQ("grab", "[100, 99]", "1"))).
+
+handle_notif_with_eterm_test() ->
+	?assertEqual(
+		{ok, undefined, hello},
+		handle_req(testmod, ?NOTIF("greet_me", "[\"helloworld\"]"))).
 
 %% Multiple Mod test
 handle_multimod_test() ->
