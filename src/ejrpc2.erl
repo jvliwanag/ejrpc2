@@ -49,11 +49,11 @@ encode_response({error, Id, internal_error}) ->
 handle_req(Mod, Bin) ->
 	handle_req(Mod, Bin, []).
 
--spec handle_req(rpc_mod() | [rpc_mod()], binary(), rpc_req_opts()) ->
-	{ok, undefined | iolist(), any()}.
+-spec handle_req(rpc_mod() | [rpc_mod()], binary(), rpc_req_opts()) -> {ok, undefined | iolist(), any()}.
 handle_req(Mod, Bin, Opts) ->
 	Exports = get_exports(Mod, []),
 	ArbHandler = proplists:get_value(arbitrary_json_h, Opts),
+	DefaultETerm = proplists:get_value(default_eterm, Opts),
 
 	%% TODO better to decode first, then find
 	OnApplySuccess = fun(Method, Args, Id, F) ->
@@ -62,7 +62,7 @@ handle_req(Mod, Bin, Opts) ->
 				Res = erlang:apply(M, Fun, Args),
 				F(Res);
 			false ->
-				encode_response_no_eterm({error, Id, method_not_found})
+				encode_response_with_eterm({error, Id, method_not_found}, DefaultETerm)
 		end
 	end,
 
@@ -74,21 +74,21 @@ handle_req(Mod, Bin, Opts) ->
 			end,
 			OnApplySuccess(Method, Args, Id, fun
 				({ok, Res}) ->
-					encode_response_no_eterm({ok, Id, Res});
+					encode_response_with_eterm({ok, Id, Res}, DefaultETerm);
 				({ok, Res, ETerm}) ->
 					encode_response_with_eterm({ok, Id, Res}, ETerm);
 				({error, Code, Msg}) ->
-					encode_response_no_eterm({error, Id, Code, Msg});
+					encode_response_with_eterm({error, Id, Code, Msg}, DefaultETerm);
 				({error, Code, Msg, ETerm}) ->
 					encode_response_with_eterm({error, Id, Code, Msg}, ETerm);
 				(Res) ->
-					encode_response_no_eterm({ok, Id, Res})
+					encode_response_with_eterm({ok, Id, Res}, DefaultETerm)
 			end);
 		{notif, Method, Args} ->
 			OnApplySuccess(Method, Args, null,
 				fun(V) -> {ok, undefined, V} end);
 		{error, _, _} = Err ->
-			encode_response_no_eterm(Err);
+			encode_response_with_eterm(Err, DefaultETerm);
 		{arbitrary, Val} ->
 			{ok, undefined, Val}
 	end.
@@ -394,5 +394,26 @@ handle_preargs_test() ->
 handle_arbitrary_json_test() ->
 	?assertEqual({ok, undefined, 99}, handle_req(testmod, <<"{\"num\":5}">>,
 		[{arbitrary_json_h, fun(_) -> 99 end}])).
+
+handle_default_eterm_test_() ->
+	[{"basic rpc", ?_assertEqual(
+		encode_response_with_eterm({ok, 1, 3}, some_term),
+		handle_req(testmod, ?REQ("subtract", "[5,2]", "1"),
+			[{default_eterm, some_term}]))},
+	{"ok rpc", ?_assertEqual(
+		encode_response_with_eterm({ok, 1, 2}, some_term),
+		handle_req(testmod, ?REQ("safe_divide", "[4,2]", "1"),
+			[{default_eterm, some_term}]))},
+	{"error rpc", ?_assertEqual(
+		encode_response_with_eterm({error, 1, 400, <<"divide by zero">>}, some_term),
+		handle_req(testmod, ?REQ("safe_divide", "[4,0]", "1"),
+			[{default_eterm, some_term}]))},
+	{"error no method", ?_assertEqual(
+		encode_response_with_eterm({error, 1, method_not_found}, some_term),
+		handle_req(testmod, ?REQ("non_existing_method", "[]", "1"),
+			[{default_eterm, some_term}]))},
+	{"error other", ?_assertEqual(
+		encode_response_with_eterm({error, null, parse_error}, some_term),
+		handle_req(testmod, <<"wrong">>, [{default_eterm, some_term}]))}].
 
 -endif.
