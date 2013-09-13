@@ -18,7 +18,7 @@ subtract(X, Y) ->
 On the erlang shell:
 ```erlang
 1> Str = "{\"jsonrpc\":\"2.0\", \"id\":1, \"method\":\"subtract\", \"params\":[250,3]}",
-2> {ok, R} = ejrpc2:handle_req(testmod, Str).
+2> {ok, R, _} = ejrpc2:handle_req(testmod, Str).
 3> io:format("Output: ~s~n", [R]).
 Output: {"jsonrpc":"2.0","result":247,"id":1}
 ok
@@ -34,10 +34,13 @@ ok
 * Opts is a list of one or more of the following
   * `{preargs, [any()]}` - pre arguments
   * `{arbitrary_json_h, fun/1}` - callback for valid json, but invalid json-rpc2
+  * `{default_eterm, any()}` - sets the default Erlang term to return for the handler 
 
 ## JSON-RPC2 Callbacks should return either:
 * `{ok, json()}`
+* `{ok, json(), any()}`
 * `{error, ErrCode, ErrMsg}`
+* `{error, ErrCode, ErrMsg, any()}`
 * `json()` - equivalent to `{ok, json()}`
 
 
