@@ -45,11 +45,12 @@ encode_response({error, Id, invalid_params}) ->
 encode_response({error, Id, internal_error}) ->
 	encode_response({error, Id, ?ERR_INTERNAL_ERROR_CODE, ?ERR_INTERNAL_ERROR_MSG}).
 
--spec handle_req(rpc_mod() | [rpc_mod()], binary()) -> {ok, iolist()} | ok.
+-spec handle_req(rpc_mod() | [rpc_mod()], binary()) -> {ok, undefined | iolist(), any()}.
 handle_req(Mod, Bin) ->
 	handle_req(Mod, Bin, []).
 
--spec handle_req(rpc_mod() | [rpc_mod()], binary(), rpc_req_opts()) -> {ok, iolist()} | ok.
+-spec handle_req(rpc_mod() | [rpc_mod()], binary(), rpc_req_opts()) ->
+	{ok, undefined | iolist(), any()}.
 handle_req(Mod, Bin, Opts) ->
 	Exports = get_exports(Mod, []),
 	ArbHandler = proplists:get_value(arbitrary_json_h, Opts),
@@ -72,13 +73,20 @@ handle_req(Mod, Bin, Opts) ->
 				L when is_list(L) -> L ++ Args0
 			end,
 			OnApplySuccess(Method, Args, Id, fun
-				({ok, Res}) -> encode_response({ok, Id, Res});
-				({error, Code, Msg}) -> encode_response({error, Id, Code, Msg});
-				(Res) -> encode_response({ok, Id, Res})
+				({ok, Res}) ->
+					encode_response_no_eterm({ok, Id, Res});
+				({ok, Res, ETerm}) ->
+					encode_response_with_eterm({ok, Id, Res}, ETerm);
+				({error, Code, Msg}) ->
+					encode_response_no_eterm({error, Id, Code, Msg});
+				({error, Code, Msg, ETerm}) ->
+					encode_response_with_eterm({error, Id, Code, Msg}, ETerm);
+				(Res) ->
+					encode_response_no_eterm({ok, Id, Res})
 			end);
 		{notif, Method, Args} ->
 			OnApplySuccess(Method, Args, null,
-				fun(_) -> ok end);
+				fun(_) -> {ok, undefined, undefined} end);
 		{error, _, _} = Err ->
 			encode_response(Err);
 		{arbitrary, Val} ->
@@ -171,6 +179,12 @@ get_fun_name_f(M, F, true) ->
 get_fun_name_f(_, F, _) ->
 	erlang:atom_to_binary(F, utf8).
 
+encode_response_with_eterm(R, E) ->
+	{ok, X} = encode_response(R),
+	{ok, X, E}.
+
+encode_response_no_eterm(R) ->
+	encode_response_with_eterm(R, undefined).
 
 -ifdef(TEST).
 
@@ -297,12 +311,13 @@ encode_known_err_test_() ->
 
 handle_rpc_test() ->
 	?assertEqual(
-		encode_response({ok, 1, 3}),
+		encode_response_no_eterm({ok, 1, 3}),
 		handle_req(testmod, ?REQ("subtract", "[5,2]", "1"))).
+
 
 handle_notif_test() ->
 	?assertEqual(
-		ok,
+		{ok, undefined, undefined},
 		handle_req(testmod, ?NOTIF("greet_me", "[\"helloworld\"]"))),
 	Rcvd = receive A={greet, _} -> A after 0 -> none end,
 	?assertEqual({greet, <<"helloworld">>}, Rcvd).
@@ -321,43 +336,54 @@ handle_undefined_method_test() ->
 %% Response Variations
 handle_ok_resp_test() ->
 	?assertEqual(
-		encode_response({ok, 1, 3}),
+		encode_response_no_eterm({ok, 1, 3}),
 		handle_req(testmod, ?REQ("safe_divide", "[6,2]", "1"))).
 
 handle_error_resp_test() ->
 	?assertEqual(
-		encode_response({error, 1, 400, <<"divide by zero">>}),
+		encode_response_no_eterm({error, 1, 400, <<"divide by zero">>}),
 		handle_req(testmod, ?REQ("safe_divide", "[6,0]", "1"))).
 
+%% With ETerm
+
+handle_rpc_with_eterm_test() ->
+	?assertEqual(
+		encode_response_with_eterm({ok, 1, 2}, 97),
+		handle_req(testmod, ?REQ("grab", "[2, 99]", "1"))).
+
+handle_error_with_eterm_test() ->
+	?assertEqual(
+		encode_response_with_eterm({error, 1, 400, <<"not enough">>}, 99),
+		handle_req(testmod, ?REQ("grab", "[100, 99]", "1"))).
 
 %% Multiple Mod test
 handle_multimod_test() ->
 	?assertEqual(
-		encode_response({ok, 1, 7}),
+		encode_response_no_eterm({ok, 1, 7}),
 		handle_req([testmod, testmod2], ?REQ("add", "[5,2]", "1"))).
 
 %% Mod Options test
 empty_mod_options_test() ->
 	?assertEqual(
-		encode_response({ok, 1, 3}),
+		encode_response_no_eterm({ok, 1, 3}),
 		handle_req({testmod, []}, ?REQ("subtract", "[5,2]", "1"))).
 
 prefix_mod_options_test_() ->
 	[{"binary prefix", ?_assertEqual(
-		encode_response({ok, 1, 3}),
+		encode_response_no_eterm({ok, 1, 3}),
 		handle_req({testmod, [{prefix, <<"mod">>}]}, ?REQ("mod.subtract", "[5,2]", "1")))},
 	{"list prefix", ?_assertEqual(
-		encode_response({ok, 1, 3}),
+		encode_response_no_eterm({ok, 1, 3}),
 		handle_req({testmod, [{prefix, "mod"}]}, ?REQ("mod.subtract", "[5,2]", "1")))},
 	{"module prefix", ?_assertEqual(
-		encode_response({ok, 1, 3}),
+		encode_response_no_eterm({ok, 1, 3}),
 		handle_req({testmod, [prefix]}, ?REQ("testmod.subtract", "[5,2]", "1")))}].
 
 
 %% handle Options
 handle_preargs_test() ->
 	?assertEqual(
-		encode_response({ok, 1, 3}),
+		encode_response_no_eterm({ok, 1, 3}),
 		handle_req(testmod, ?REQ("subtract", "[2]", "1"), [{preargs, [5]}])).
 
 handle_arbitrary_json_test() ->
