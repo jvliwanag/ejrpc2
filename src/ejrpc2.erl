@@ -62,7 +62,7 @@ handle_req(Mod, Bin, Opts) ->
 				Res = erlang:apply(M, Fun, Args),
 				F(Res);
 			false ->
-				encode_response({error, Id, method_not_found})
+				encode_response_no_eterm({error, Id, method_not_found})
 		end
 	end,
 
@@ -88,7 +88,7 @@ handle_req(Mod, Bin, Opts) ->
 			OnApplySuccess(Method, Args, null,
 				fun(_) -> {ok, undefined, undefined} end);
 		{error, _, _} = Err ->
-			encode_response(Err);
+			encode_response_no_eterm(Err);
 		{arbitrary, Val} ->
 			{ok, undefined, Val}
 	end.
@@ -324,13 +324,13 @@ handle_notif_test() ->
 
 handle_decode_err_test() ->
 	?assertEqual(
-		encode_response({error, null, parse_error}),
+		encode_response_no_eterm({error, null, parse_error}),
 		handle_req(testmod, <<"wrong">>)).
 
 handle_undefined_method_test() ->
 	non_existing_method, % Make sure atom is loaded
 	?assertEqual(
-		encode_response({error, 1, method_not_found}),
+		encode_response_no_eterm({error, 1, method_not_found}),
 		handle_req(testmod, ?REQ("non_existing_method", "[]", "1"))).
 
 %% Response Variations
